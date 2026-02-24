@@ -47,17 +47,21 @@ def extract_text(file: UploadFile) -> str:
     file_ext = file.filename.split(".")[-1].lower()
     
     try:
+        # Read the entire file content into memory
+        file_bytes = file.file.read()
+        
         if file_ext == "pdf":
-            pdf = PdfReader(io.BytesIO(file.file.read()))
+            pdf = PdfReader(io.BytesIO(file_bytes))
             for page in pdf.pages:
                 text = page.extract_text()
                 if text:
                     content += text + "\n"
         elif file_ext == "txt":
-            content = file.file.read().decode("utf-8")
+            content = file_bytes.decode("utf-8")
         else:
             raise HTTPException(status_code=400, detail="Unsupported file type. Use PDF or TXT.")
     except Exception as e:
+        print(f"File extraction error: {e}")
         raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
     
     return content
@@ -68,7 +72,7 @@ def get_embeddings(texts: List[str]) -> np.ndarray:
     
     try:
         all_embeddings = []
-        batch_size = 90 # Cohere limit is 96, using 90 to be safe
+        batch_size = 90 
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             response = coh.embed(
@@ -77,9 +81,13 @@ def get_embeddings(texts: List[str]) -> np.ndarray:
                 input_type="search_document",
                 embedding_types=["float"]
             )
-            all_embeddings.extend(response.embeddings.float)
+            # Handle list vs attribute access based on SDK version
+            embeddings = getattr(response.embeddings, "float", response.embeddings)
+            all_embeddings.extend(embeddings)
+            
         return np.array(all_embeddings)
     except Exception as e:
+        print(f"Embedding generation error: {e}")
         raise HTTPException(status_code=500, detail=f"Embedding error: {str(e)}")
 
 def get_query_embedding(text: str) -> np.ndarray:
@@ -93,9 +101,15 @@ def get_query_embedding(text: str) -> np.ndarray:
             input_type="search_query",
             embedding_types=["float"]
         )
-        return np.array(response.embeddings.float[0])
+        embeddings = getattr(response.embeddings, "float", response.embeddings)
+        return np.array(embeddings[0])
     except Exception as e:
+        print(f"Query embedding error: {e}")
         raise HTTPException(status_code=500, detail=f"Query embedding error: {str(e)}")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "cohere_connected": coh is not None}
 
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
@@ -104,9 +118,8 @@ async def upload_document(file: UploadFile = File(...)):
         text = extract_text(file)
         
         if not text.strip():
-            raise HTTPException(status_code=400, detail="Document is empty.")
+            raise HTTPException(status_code=400, detail="Document is empty or text could not be extracted.")
 
-        # Smaller chunks for better granularity
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50,
@@ -115,7 +128,9 @@ async def upload_document(file: UploadFile = File(...)):
         )
         store.chunks = text_splitter.split_text(text)
         
-        # Generate Embeddings
+        if not store.chunks:
+             raise HTTPException(status_code=400, detail="Could not split document into chunks.")
+
         print(f"Processing document: {len(store.chunks)} chunks generated.")
         store.embeddings = get_embeddings(store.chunks)
         
@@ -133,32 +148,27 @@ async def ask_question(data: dict):
         raise HTTPException(status_code=400, detail="Question is required.")
     
     if not store.chunks or store.embeddings is None:
-        raise HTTPException(status_code=400, detail="No document uploaded yet.")
+        raise HTTPException(status_code=400, detail="No document uploaded yet. Please upload a file first.")
 
     try:
-        # 1. Embed question
         q_emb = get_query_embedding(question)
         
-        # 2. Similarity search
         norms = np.linalg.norm(store.embeddings, axis=1)
         q_norm = np.linalg.norm(q_emb)
         
         if q_norm == 0 or np.any(norms == 0):
-            return {"answer": "Answer not found in document"}
+            return {"answer": "No relevant information found in the document."}
             
         similarities = np.dot(store.embeddings, q_emb) / (norms * q_norm)
         
-        # Get top 10 most relevant chunks for better context coverage
         top_k = min(10, len(store.chunks))
         top_indices = np.argsort(similarities)[-top_k:][::-1]
         
-        # Logging for debugging
         print(f"Query: '{question}' | Top Similarity: {max(similarities):.4f}")
         
         context_chunks = [store.chunks[i] for i in top_indices]
         context_text = "\n---\n".join(context_chunks)
         
-        # 3. Construct a more helpful prompt
         prompt = f"""You are an expert document assistant. Use the following context to answer the user's question accurately.
 
 RULES:
@@ -174,42 +184,60 @@ USER QUESTION: {question}
 
 DETAILED ANSWER:"""
 
-        # 4. Cohere Generation
-        try:
-            response = coh.chat(
-                model="command-r-plus-08-2024",
-                messages=[{"role": "user", "content": prompt}]
-            )
-        except Exception as e:
-            print(f"Attempting fallback due to: {e}")
-            response = coh.chat(
-                model="command-r-08-2024",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
+        # Cohere Generation with Fallback
+        models = ["command-r-plus-08-2024", "command-r-08-2024", "command-r"]
+        response = None
+        error = None
+        
+        for model in models:
+            try:
+                response = coh.chat(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                if response:
+                    break
+            except Exception as e:
+                print(f"Model {model} failed: {e}")
+                error = e
+                continue
+        
+        if not response:
+            raise HTTPException(status_code=500, detail=f"Cohere generation failed: {str(error)}")
+
+        # Robust Answer Extraction
         answer = ""
-        if hasattr(response, 'message') and hasattr(response.message, 'content'):
-            for item in response.message.content:
-                if isinstance(item, dict):
-                    answer += item.get("text", "")
-                else:
-                    answer += getattr(item, "text", "")
-        else:
-            answer = getattr(response, "text", str(response))
+        try:
+            if hasattr(response, 'message') and hasattr(response.message, 'content'):
+                for item in response.message.content:
+                    if hasattr(item, "text"):
+                        answer += item.text
+                    elif isinstance(item, dict):
+                        answer += item.get("text", "")
+                    else:
+                        answer += str(item)
+            else:
+                answer = getattr(response, "text", str(response))
+        except Exception as e:
+            print(f"Answer extraction error: {e}")
+            answer = str(response)
 
         answer = answer.strip()
         if not answer:
-            return {"answer": "Answer not found in document"}
+            return {"answer": "I found relevant sections but couldn't generate a clear answer. Please try rephrasing."}
             
         return {"answer": answer}
 
     except Exception as e:
         print(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail="An error occurred while generating the answer.")
+        raise HTTPException(status_code=500, detail=f"Error generating answer: {str(e)}")
 
 # Serve static files
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Using 127.0.0.1 for local testing, 0.0.0.0 for deployment
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+

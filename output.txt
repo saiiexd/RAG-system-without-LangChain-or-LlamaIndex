@@ -1,0 +1,5 @@
+Index status: 200
+Upload status: 200
+Upload response: {"message":"Document processed. Split into 1 chunks."}
+Ask status: 200
+Ask response: {"answer":"The document is about artificial intelligence."}

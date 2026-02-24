@@ -72,9 +72,11 @@ uploadBtn.onclick = async () => {
             addMessage("Assistant", "I couldn't process the document. Error: " + errorText);
         }
     } catch (error) {
-        uploadStatus.innerText = "Connection error.";
+        console.error("Upload error:", error);
+        uploadStatus.innerText = "Connection error. Make sure the server is running on port 8000.";
         uploadStatus.style.color = "red";
         uploadBtn.disabled = false;
+        addMessage("Assistant", "Network error: Could not reach the backend. Check if the server is running.");
     }
 };
 
@@ -105,7 +107,8 @@ async function askQuestion() {
         }
 
     } catch (error) {
-        addMessage("Assistant", "Error: Could not reach the server.");
+        console.error("Chat error:", error);
+        addMessage("Assistant", "Error: Could not reach the server. Please check your network connection.");
     } finally {
         queryInput.disabled = false;
         sendBtn.disabled = false;
@@ -125,3 +128,4 @@ function addMessage(sender, text) {
     chatBox.appendChild(msgDiv);
     chatBox.scrollTop = chatBox.scrollHeight;
 }
+

@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pypdf
+langchain-text-splitters
+cohere
+python-dotenv
+numpy
+python-multipart
