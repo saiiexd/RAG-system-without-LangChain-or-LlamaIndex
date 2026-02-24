@@ -73,10 +73,18 @@ uploadBtn.onclick = async () => {
         }
     } catch (error) {
         console.error("Upload error:", error);
-        uploadStatus.innerText = "Connection error. Make sure the server is running on port 8000.";
+        console.log("Current Page URL:", window.location.href);
+        const isFileProtocol = window.location.protocol === 'file:';
+
+        if (isFileProtocol) {
+            uploadStatus.innerText = "Error: Please open http://localhost:8000 in your browser, NOT the file directly.";
+            addMessage("Assistant", "It looks like you opened the HTML file directly. Please navigate to http://localhost:8000 in your browser address bar.");
+        } else {
+            uploadStatus.innerText = "Connection error. Make sure the server is running on port 8000.";
+            addMessage("Assistant", "Network error: Could not reach the backend. Check if the server is running.");
+        }
         uploadStatus.style.color = "red";
         uploadBtn.disabled = false;
-        addMessage("Assistant", "Network error: Could not reach the backend. Check if the server is running.");
     }
 };
 
@@ -128,4 +136,5 @@ function addMessage(sender, text) {
     chatBox.appendChild(msgDiv);
     chatBox.scrollTop = chatBox.scrollHeight;
 }
+
 
