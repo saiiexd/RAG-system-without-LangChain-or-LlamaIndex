@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal RAG Assistant</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Minimal RAG Assistant</h1>
+            <p>Upload a document and ask questions based on its content.</p>
+        </header>
+
+        <section class="upload-section">
+            <div class="upload-card" id="drop-zone">
+                <input type="file" id="file-input" hidden accept=".pdf,.txt">
+                <div class="upload-content">
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                    <p>Click or Drag & Drop PDF/TXT</p>
+                    <span id="file-name">No file selected</span>
+                </div>
+            </div>
+            <button id="upload-btn" disabled>Upload & Process</button>
+            <div id="upload-status" class="status-msg"></div>
+        </section>
+
+        <section class="chat-section">
+            <div class="chat-box" id="chat-box">
+                <div class="message assistant">
+                    Hello! I'm your document assistant. Upload a file above to get started.
+                </div>
+            </div>
+            <div class="input-area">
+                <input type="text" id="query-input" placeholder="Ask a question about the document..." disabled>
+                <button id="send-btn" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                </button>
+            </div>
+        </section>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.gemini/
+.agent/
+task.md
+implementation_plan.md
+walkthrough.md
+node_modules/
+dist/
+.vscode/
